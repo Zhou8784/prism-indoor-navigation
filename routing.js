@@ -63,12 +63,13 @@ function buildGraphFromCorridors(floor) {
     });
 
     if (!bestProj) return;
-    if (minDist > 120) return;//连接距离限制，防止乱接
+    if (minDist > 200) return;//连接距离限制，防止乱接
 
     const roomNode = {
       id: room.room_id,
       pos: [center[0], center[1], floor],
-      edges: []
+      edges: [],
+      type: room.type   // 4.26新增房间节点添加类型标记
     };
 
     nodes.push(roomNode);
@@ -118,6 +119,10 @@ function dijkstra(nodes, startId, endId) {
     if (id === endId) break;
 
     const node = nodeMap.get(id);
+    if (node.type && node.type !== '楼梯间' && id !== endId && id !== startId) {
+    // 禁止从非楼梯间房间节点穿越（除非它是起点或终点）
+    continue;
+}
     if (!node) continue;
 
     node.edges.forEach(edge => {
@@ -186,8 +191,10 @@ function findPath(startRoomId, endRoomId) {
 
   const nodes2 = buildGraphFromCorridors(ef);
   const part2 = dijkstra(nodes2, sEnd.room_id, endRoomId);
+  
+  const fullPath = [...part1, ...part2];
 
-  return makeOrthogonal(path);
+  return fullPath;
 }
 
 // ================== 工具 ==================
