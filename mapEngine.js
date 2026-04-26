@@ -164,9 +164,13 @@ function getStairCenters(floor) {
 }
 
 function drawRoute(pathCoords) {
-    // 将完整路径保存到全局，方便切换楼层时重绘
-    window.globalFullRoute = pathCoords; 
+    clearRoute(); // 4.26先清除旧路线
+
+    window.globalFullRoute = pathCoords;
+
     renderRouteOnCurrentFloor();
+
+    startNavigationFollow(pathCoords); // 4.26启动跟随
 }
 
 function renderRouteOnCurrentFloor() {
@@ -176,7 +180,7 @@ function renderRouteOnCurrentFloor() {
 
     if (!window.globalFullRoute) return;
 
-    // ⭐ 严格校验三维点
+    // 4.26 严格校验三维点
     const pts = window.globalFullRoute.filter(p =>
         Array.isArray(p) &&
         p.length === 3 &&
@@ -197,9 +201,15 @@ function clearRoute() {
         map.removeLayer(window.currentRouteLine);
         window.currentRouteLine = null;
     }
-    window.globalFullRoute = null; // 清除缓存数据
-}
 
+    window.globalFullRoute = null;
+
+    // 4.26停止导航动画
+    if (window.navTimer) {
+        cancelAnimationFrame(window.navTimer);
+        window.navTimer = null;
+    }
+}
 
 let is3D = false; // 初始为 2D 状态
 
@@ -243,4 +253,32 @@ function toggle3D() {
     setTimeout(() => {
         map.invalidateSize({animate: true});
     }, 500); // 等 500ms CSS过渡动画完成后再重置
+}
+//4.26增加自动跟随
+function startNavigationFollow(path) {
+    if (!path || path.length < 2) return;
+
+    let i = 0;
+
+    function step() {
+        if (i >= path.length) return;
+
+        const [x, y, floor] = path[i];
+
+        // 自动切楼层
+        if (floor !== currentFloor) {
+            filterFloor(floor);
+        }
+
+        // 地图跟随移动
+        map.flyTo([y, x], 1.5, {
+            animate: true,
+            duration: 0.6
+        });
+
+        i++;
+        window.navTimer = requestAnimationFrame(step);
+    }
+
+    step();
 }

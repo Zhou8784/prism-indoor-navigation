@@ -63,6 +63,7 @@ function buildGraphFromCorridors(floor) {
     });
 
     if (!bestProj) return;
+    if (minDist > 120) return;//连接距离限制，防止乱接
 
     const roomNode = {
       id: room.room_id,
@@ -92,22 +93,8 @@ function buildGraphFromCorridors(floor) {
     nA.edges.push({ to: doorNode.id, weight: dA });
     nB.edges.push({ to: doorNode.id, weight: dB });
 
-    // ⭐ 关键增强：投影点 → 最近走廊节点（避免绕远）
-    let nearestNode = null;
-    let best = Infinity;
-
-    nodeMap.forEach(n => {
-      const d = distance(bestProj, n.pos);
-      if (d < best) {
-        best = d;
-        nearestNode = n;
-      }
-    });
-
-    if (nearestNode) {
-      doorNode.edges.push({ to: nearestNode.id, weight: best });
-      nearestNode.edges.push({ to: doorNode.id, weight: best });
-    }
+    // 关键增强：投影点 → 最近走廊节点（避免绕远）
+    
   });
 
   GRAPH_CACHE.set(floor, nodes);
@@ -164,7 +151,7 @@ function matchStairs(startFloor, endFloor) {
 
   for (let a of s1) {
     for (let b of s2) {
-      // ⭐ 用 room_id 前缀匹配（强一致）
+      // 用 room_id 前缀匹配（强一致）
       if (a.room_id.split('-')[0] === b.room_id.split('-')[0]) {
         return [a, b];
       }
