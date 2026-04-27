@@ -77,7 +77,7 @@ function buildGraphFromCorridors(floor) {
     });
 
     if (!bestProj) return;
-    if (minDist > 300) return;//4.27连接距离限制，防止乱接，扩大距离范围
+    if (minDist > 200) return;//4.27连接距离限制，防止乱接，扩大距离范围
     // 4.27检查投影点是否落在走廊区域内，否则使用最近线段端点
     const inCorridor = isPointInAnyCorridor(bestProj, corridorData);
     let doorPoint = bestProj;
