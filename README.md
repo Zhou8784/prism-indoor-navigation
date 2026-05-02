@@ -17,18 +17,18 @@
 - **算法**：Dijkstra 最短路径、点至线段投影、走廊多边形包含检测
 
 ## 项目结构
-├── index.html # 主页面 (含地图数据 MAP_DATA)
-├── css/
-│ ├── style.css # 桌面端样式
-│ └── mobile.css # 移动端响应式样式
-└── js/
-├── config.js # 全局配置与颜色映射
-├── storage.js # 课表存取
-├── parser.js # 课表文本解析与教室号映射
-├── notification.js# 基于 SweetAlert2 的课前提醒
-├── routing.js # 分层路网构建与 Dijkstra 路径搜索
-├── mapEngine.js # Leaflet 地图初始化、渲染与导航跟随
-└── main.js # 主控逻辑、事件绑定与 UI 交互
+-├── index.html # 主页面 (含地图数据 MAP_DATA)
+-├── css/
+-│ ├── style.css # 桌面端样式
+-│ └── mobile.css # 移动端响应式样式
+-└── js/
+-├── config.js # 全局配置与颜色映射
+-├── storage.js # 课表存取
+-├── parser.js # 课表文本解析与教室号映射
+-├── notification.js# 基于 SweetAlert2 的课前提醒
+-├── routing.js # 分层路网构建与 Dijkstra 路径搜索
+-├── mapEngine.js # Leaflet 地图初始化、渲染与导航跟随
+-└── main.js # 主控逻辑、事件绑定与 UI 交互
 
 ## 数据说明
 - 地图数据（`MAP_DATA`）由三栋建筑（1、2、3 栋）的一层与二层真实房间多边形坐标、走廊中心线构成，存储于 `index.html` 的 `<script>` 标签中。
