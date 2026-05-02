@@ -1,67 +1,101 @@
 @media screen and (max-width: 768px) {
     .app-container { 
-        flex-direction: column; 
+        display: block; /* 移除 flex，改用绝对定位堆叠 */
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
     }
 
-    /* 地图区域保持不变 */
+    /* 地图占满全屏，放在底层 */
     .map-container { 
-        order: 1; 
-        height: 70vh !important; 
+        height: 100vh !important; 
         width: 100%; 
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 1;
     }
 
-    /* 侧边栏/底部抽屉：默认展开高度 */
+    /* 底部抽屉：默认展开状态 */
     .sidebar {
         width: 100%; 
-        height: 30vh !important; 
-        order: 2; 
-        padding: 15px; 
-        border-right: none; 
-        border-top: 1px solid #ddd;
-        border-radius: 24px 24px 0 0; /* 顶部圆角 */
+        height: 55vh !important; /* 展开时占据的高度 */
+        padding: 0; 
+        border-radius: 24px 24px 0 0; 
         position: absolute; 
         bottom: 0; 
         left: 0; 
         z-index: 500;
-        background: white; 
-        overflow-y: auto;  
-        transition: height 0.3s ease-in-out; /* 添加平滑过渡动画 */
-        box-shadow: 0 -5px 20px rgba(0,0,0,0.08); /* 悬浮效果 */
-    }
-
-    /* 【核心修复】折叠状态 */
-    .sidebar.collapsed {
-        height: 70px !important; /* 收缩后只保留标题栏的高度 */
-        padding: 0 15px;     
-        overflow: hidden;    /* 隐藏溢出的内容 */
-        border-radius: 24px 24px 0 0; 
-    }
-
-    /* 折叠时，隐藏主体内容（课表、筛选、搜索、导航控件等） */
-    .sidebar.collapsed .sidebar-content {
-        display: none !important;
-    }
-
-    /* 调整折叠时手柄（标题栏）的位置 */
-    .sidebar.collapsed .sidebar-handle {
-        height: 70px; 
+        /* 加入毛玻璃质感 */
+        background: rgba(255, 255, 255, 0.95); 
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-top: 1px solid rgba(255, 255, 255, 0.5);
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin: 0;
-        padding: 0;
-        cursor: pointer;
-        width: 100%;
+        flex-direction: column;
+        /* 使用 transform 替代 height 动画，性能更好 */
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
+        box-shadow: 0 -5px 25px rgba(0,0,0,0.1); 
     }
 
-    /* 路线面板微调 */
+    /* 【核心修复】折叠状态：通过 translateY 向下平移，只露出头部 */
+    .sidebar.collapsed {
+        /* 假设头部高度为 70px，将抽屉向下移动，只留 70px 在屏幕内 */
+        transform: translateY(calc(100% - 70px)); 
+    }
+
+    /* 合并后的 Header 样式 */
+    .sidebar-header {
+        height: 70px;
+        padding: 10px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    /* 顶部拖拽指示小横条 */
+    .handle-bar {
+        width: 40px;
+        height: 5px;
+        background-color: #cbd5e1;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+
+    .header-content {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .header-content h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    
+    .header-actions { display: flex; align-items: center; gap: 8px; }
+
+    /* 内容区允许独立滚动 */
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px 20px;
+        /* 隐藏滚动条让视觉更干净 */
+        scrollbar-width: none; 
+    }
+    .sidebar-content::-webkit-scrollbar { display: none; }
+
+    /* 适配路线面板位置，防止被抽屉遮挡 */
     .route-panel { 
         left: 10px; 
         right: 10px; 
-        bottom: 32vh; 
+        bottom: calc(55vh + 10px); /* 展开时在抽屉上方 */
+        transition: bottom 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        z-index: 499;
     }
-
-    .floor-switcher { 
-        flex-direction: row; 
+    .sidebar.collapsed ~ .route-panel {
+        bottom: 85px; /* 收起时下沉 */
     }
 }
