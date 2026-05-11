@@ -1,52 +1,54 @@
+:root {
+    --sidebar-height: 55vh;           /* 侧边栏展开高度 */
+    --sidebar-collapsed-offset: 70px; /* 折叠后露出的头部高度 */
+    --route-panel-gap: 10px;          /* 路径面板与侧边栏间距 */
+}
+
 @media screen and (max-width: 768px) {
     .app-container { 
-        display: block; /* 移除 flex，改用绝对定位堆叠 */
         height: 100vh;
         overflow: hidden;
         position: relative;
     }
 
-    /* 地图占满全屏，放在底层 */
+    /* 地图全屏底层，手势隔离 */
     .map-container { 
         height: 100vh !important; 
         width: 100%; 
         position: absolute;
-        top: 0;
-        left: 0;
+        top: 0; left: 0;
         z-index: 1;
+        touch-action: pan-x pan-y pinch-zoom;  /* 允许地图平移缩放，防止与抽屉滑动冲突 */
     }
 
-    /* 底部抽屉：默认展开状态 */
+    /* 底部抽屉 */
     .sidebar {
         width: 100%; 
-        height: 55vh !important; /* 展开时占据的高度 */
+        height: var(--sidebar-height) !important;
         padding: 0; 
         border-radius: 24px 24px 0 0; 
         position: absolute; 
         bottom: 0; 
         left: 0; 
         z-index: 500;
-        /* 加入毛玻璃质感 */
         background: rgba(255, 255, 255, 0.95); 
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border-top: 1px solid rgba(255, 255, 255, 0.5);
         display: flex;
         flex-direction: column;
-        /* 使用 transform 替代 height 动画，性能更好 */
-        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); 
-        box-shadow: 0 -5px 25px rgba(0,0,0,0.1); 
+        box-shadow: 0 -5px 25px rgba(0,0,0,0.1);
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
 
-    /* 【核心修复】折叠状态：通过 translateY 向下平移，只露出头部 */
+    /* 折叠状态：向下平移，只留头部 */
     .sidebar.collapsed {
-        /* 假设头部高度为 70px，将抽屉向下移动，只留 70px 在屏幕内 */
-        transform: translateY(calc(100% - 70px)); 
+        transform: translateY(calc(100% - var(--sidebar-collapsed-offset)));
     }
 
-    /* 合并后的 Header 样式 */
+    /* 头部样式 */
     .sidebar-header {
-        height: 70px;
+        height: var(--sidebar-collapsed-offset);
         padding: 10px 20px;
         display: flex;
         flex-direction: column;
@@ -57,7 +59,6 @@
         border-bottom: 1px solid rgba(0,0,0,0.05);
     }
 
-    /* 顶部拖拽指示小横条 */
     .handle-bar {
         width: 40px;
         height: 5px;
@@ -73,29 +74,39 @@
         align-items: center;
     }
 
-    .header-content h2 { margin: 0; font-size: 1.1rem; font-weight: 600; }
+    .header-content h2 { 
+        margin: 0; font-size: 1.1rem; font-weight: 600; 
+    }
     
-    .header-actions { display: flex; align-items: center; gap: 8px; }
+    .header-actions { 
+        display: flex; align-items: center; gap: 8px; 
+    }
 
-    /* 内容区允许独立滚动 */
+    /* 内容区独立滚动，隐藏滚动条，手势仅垂直滚动 */
     .sidebar-content {
         flex: 1;
         overflow-y: auto;
         padding: 15px 20px;
-        /* 隐藏滚动条让视觉更干净 */
+        touch-action: pan-y;          /* 只允许垂直滚动，防止影响地图 */
         scrollbar-width: none; 
     }
     .sidebar-content::-webkit-scrollbar { display: none; }
 
-    /* 适配路线面板位置，防止被抽屉遮挡 */
+    /* 路径面板动态定位 */
     .route-panel { 
+        position: absolute;
         left: 10px; 
         right: 10px; 
-        bottom: calc(55vh + 10px); /* 展开时在抽屉上方 */
+        bottom: calc(var(--sidebar-height) + var(--route-panel-gap));
         transition: bottom 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-        z-index: 499;
+        z-index: 501 !important;      /* 高于侧边栏，确保不被遮挡 */
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.2);
     }
+
+    /* 折叠时路径面板下沉到头部上方 */
     .sidebar.collapsed ~ .route-panel {
-        bottom: 85px; /* 收起时下沉 */
+        bottom: calc(var(--sidebar-collapsed-offset) + var(--route-panel-gap));
     }
 }
