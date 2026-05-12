@@ -79,7 +79,7 @@ function buildGraphFromCorridors(floor, preference = 'shortest') {
     if (!bestProj) return;
     if (minDist > 200) return;//4.27连接距离限制，防止乱接，扩大距离范围
     // 4.27检查投影点是否落在走廊区域内，否则使用最近线段端点
-    const inCorridor = isPointInAnyCorridor(bestProj, corridorData);
+    const inCorridor = isPointInCorridorPolygon(bestProj, corridorData);
     let doorPoint = bestProj;
     if (!inCorridor) {
       const dA = distance(center, bestSeg[0]);
@@ -310,6 +310,14 @@ function projectPointOnSegment(p, a, b) {
 
 function distance(p1, p2) {
   return Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
+}
+function calculatePathCost(path) {
+    if (!path || path.length < 2) return Infinity;
+    let total = 0;
+    for (let i = 1; i < path.length; i++) {
+        total += distance(path[i-1], path[i]);
+    }
+    return total;
 }
 function makeOrthogonal(path) {
   const result = [];

@@ -14,7 +14,6 @@ function initMap() {
     });
 
     map.setView([900, 550], 0);
-    L.tileLayer('', {}).addTo(map);
 
     extractAllRooms();
     
