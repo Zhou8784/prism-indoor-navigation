@@ -18,7 +18,7 @@ function isPointInCorridorPolygon(point, corridors) {
   return false;
 }
 
-function buildGraphFromCorridors(floor) {
+function buildGraphFromCorridors(floor, preference = 'shortest') {
   if (GRAPH_CACHE.has(floor)) return GRAPH_CACHE.get(floor);
 
   const nodes = [];
@@ -124,7 +124,7 @@ function buildGraphFromCorridors(floor) {
 }
 
 //Dijkstra（稳定版）
-function dijkstra(nodes, startId, endId) {
+function dijkstra(nodes, startId, endId, preference = 'shortest') {
   const dist = {}, prev = {}, visited = {};
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
 
@@ -138,29 +138,37 @@ function dijkstra(nodes, startId, endId) {
     const { id } = pq.shift();
     if (visited[id]) continue;
     visited[id] = true;
-
     if (id === endId) break;
 
     const node = nodeMap.get(id);
-    // 定义可通行节点类型（走廊、大厅、连通廊、楼梯间）
-    const WALKABLE_TYPES = new Set([
-   '楼梯间',
-    '走廊大厅1', '走廊大厅7',
-    '公共走廊1', '公共走廊2', '公共走廊3', '公共走廊4',
-    '公共走廊6', '公共走廊7', '公共走廊8', '公共走廊9',
-    '公共走廊10', '公共走廊11', '公共走廊12', '公共走廊13',
-    '公共走廊14', '公共走廊15',
-    '连通廊5', '连通廊5',   // 注意 1F 和 2F 都有“连通廊5”
-    '走廊6', '大厅文化长廊9'
-]);
-
-
-    if (node.type && !WALKABLE_TYPES.has(node.type)) {
-    // 非可通行节点不允许作为中间节点穿越
-    if (id !== endId && id !== startId) continue;
-}
     if (!node) continue;
 
+    // 定义“可通行节点类型”基础集合（所有走廊类、大厅等）
+    const WALKABLE_TYPES = new Set([
+      '走廊大厅1', '走廊大厅7',
+      '公共走廊1', '公共走廊2', '公共走廊3', '公共走廊4',
+      '公共走廊6', '公共走廊7', '公共走廊8', '公共走廊9',
+      '公共走廊10', '公共走廊11', '公共走廊12', '公共走廊13',
+      '公共走廊14', '公共走廊15',
+      '连通廊5',
+      '走廊6', '大厅文化长廊9',
+      '楼梯间',  // 默认允许通过楼梯，但无障碍模式下将被删除
+      '电梯'     // 默认允许通过电梯
+    ]);
+
+    // 根据偏好动态调整可通行节点
+    if (preference === 'accessible') {
+      WALKABLE_TYPES.delete('楼梯间'); // 无障碍模式禁止穿越楼梯间
+    } else if (preference === 'stairs') {
+      // 可以给楼梯更低的权重，这里简化处理保留原样
+    }
+
+    // 非可通行类型节点，只有作为起点或终点时才允许
+    if (node.type && !WALKABLE_TYPES.has(node.type)) {
+      if (id !== startId && id !== endId) continue;
+    }
+
+    // 遍历邻接边
     node.edges.forEach(edge => {
       const nd = dist[id] + edge.weight;
       if (nd < dist[edge.to]) {
@@ -171,15 +179,14 @@ function dijkstra(nodes, startId, endId) {
     });
   }
 
+  // 回溯路径
   const path = [];
   let cur = endId;
-
   while (cur) {
     const node = nodeMap.get(cur);
     if (node) path.unshift(node.pos);
     cur = prev[cur];
   }
-
   return path;
 }
 
@@ -200,51 +207,90 @@ function matchStairs(startFloor, endFloor) {
   return null;
 }
 
-// 路径入口 
-function findPath(startRoomId, endRoomId) {
+function findPath(startRoomId, endRoomId, preference = 'shortest') {
   const startRoom = allRooms.find(r => r.room_id === startRoomId);
   const endRoom = allRooms.find(r => r.room_id === endRoomId);
 
-  if (!startRoom || !endRoom) return [];
+  if (!startRoom || !endRoom) {
+    console.error('起点或终点房间不存在');
+    return [];
+  }
 
   const sf = startRoom.floor_number;
   const ef = endRoom.floor_number;
 
-  // 同层
+  // 同层规划：直接在当前楼层图上计算最短路径（偏好影响可通行节点）
   if (sf === ef) {
-    const nodes = buildGraphFromCorridors(sf);
-    return dijkstra(nodes, startRoomId, endRoomId);
+    const nodes = buildGraphFromCorridors(sf, preference);
+    return dijkstra(nodes, startRoomId, endRoomId, preference);
   }
 
-  // 4.27跨层 
-   const stairsStart = allRooms.filter(r => r.type === '楼梯间' && r.floor_number === sf);
-  const stairsEnd   = allRooms.filter(r => r.type === '楼梯间' && r.floor_number === ef);
+  // 跨层规划
+  // 根据偏好选择跨层通道：楼梯 or 电梯
+  const connectorsFilter = (preference === 'accessible')
+    ? r => r.type === '电梯' && r.floor_number === sf  // 无障碍只用电梯
+    : r => r.type === '楼梯间' && r.floor_number === sf;
+
+  const connectorsStart = allRooms.filter(r => connectorsFilter(r));
+  if (connectorsStart.length === 0) {
+    console.warn('当前楼层无可用的跨层通道');
+    return [];
+  }
 
   let bestPath = null;
   let bestCost = Infinity;
 
-  for (const sStart of stairsStart) {
-    const nodes1 = buildGraphFromCorridors(sf);
-    const part1 = dijkstra(nodes1, startRoomId, sStart.room_id);
-    if (part1.length < 2) continue;   // 不可达该楼梯间
+  for (const connStart of connectorsStart) {
+    // 在同楼栋的终点楼层找到对应的通道（room_id 前缀相同）
+    const buildingPrefix = connStart.room_id.split('-')[0]; // 例 "1"
+    const connEndCandidates = allRooms.filter(r =>
+      r.type === connStart.type &&          // 同类型（电梯/楼梯）
+      r.floor_number === ef &&              // 目标楼层
+      r.room_id.startsWith(buildingPrefix + '-') // 同栋楼
+    );
 
-    for (const sEnd of stairsEnd) {
-      const nodes2 = buildGraphFromCorridors(ef);
-      const part2 = dijkstra(nodes2, sEnd.room_id, endRoomId);
-      if (part2.length < 2) continue;
+    for (const connEnd of connEndCandidates) {
+      // 第一段：起点 -> 通道入口（起始楼层）
+      const nodes1 = buildGraphFromCorridors(sf, preference);
+      const part1 = dijkstra(nodes1, startRoomId, connStart.room_id, preference);
+      if (part1.length < 2) continue;  // 不可达该通道入口
 
-      // 简单代价估算（后续可加入楼梯内部高度代价）
-      const cost = part1.length + part2.length;
+      // 第二段：通道出口（目标楼层）-> 终点
+      const nodes2 = buildGraphFromCorridors(ef, preference);
+      const part2 = dijkstra(nodes2, connEnd.room_id, endRoomId, preference);
+      if (part2.length < 2) continue;  // 从该通道出口不可达终点
+
+      // 简化代价：两段路径的 Manhattan 距离和（可替换为实际路径长度累加）
+      // 增加楼层变化惩罚，鼓励就近选择通道
+      const crossCost = (preference === 'accessible') ? 0 : 100; // 电梯无体力惩罚
+      const cost = calculatePathCost(part1) + calculatePathCost(part2) + crossCost;
+
       if (cost < bestCost) {
         bestCost = cost;
-        bestPath = [...part1, ...part2];
+        bestPath = [...part1, ...part2]; // 直接拼接（注意交界点重复，dijkstra 中包含通道节点）
       }
     }
   }
 
-  return bestPath || []; 
+  if (!bestPath) {
+    console.warn('未找到可行的跨层路径');
+    return [];
+  }
+
+  // 可进一步用 makeOrthogonal 优化路径形状
+  // return makeOrthogonal(bestPath);
+  return bestPath;
 }
 
+/** 计算路径实际距离和（用于代价比较） */
+function calculatePathCost(path) {
+  if (!path || path.length < 2) return Infinity;
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    total += distance(path[i-1], path[i]);
+  }
+  return total;
+}
 //工具
 function projectPointOnSegment(p, a, b) {
   const [px, py] = p;
@@ -281,4 +327,48 @@ function makeOrthogonal(path) {
   result.push(path[path.length - 1]);
 
   return result;
+}
+function generateDirections(path) {
+    if (!path || path.length < 2) return [];
+    const steps = [];
+    let currentFloor = path[0][2];
+    steps.push({ type: 'start', text: `从 ${getNearestRoomName(path[0])} 出发`, floor: currentFloor });
+    
+    let i = 0;
+    while (i < path.length - 1) {
+        const [x1, y1, f1] = path[i];
+        const [x2, y2, f2] = path[i + 1];
+        
+        // 楼层切换指令
+        if (f1 !== f2) {
+            const facility = getStairOrElevatorName(path[i], path[i+1]);
+            const direction = f2 > f1 ? '上楼' : '下楼';
+            steps.push({ type: 'floor_change', text: `在 ${facility} ${direction}`, floor: f2 });
+            currentFloor = f2;
+            i++;
+            continue;
+        }
+
+        // 检查后续同层多段，计算方向变化
+        let j = i;
+        while (j < path.length - 1 && path[j+1][2] === f1) j++;
+        const segment = path.slice(i, j+1);
+        // 简化成直线或转弯段落
+        const directions = analyzeTurn(segment);
+        steps.push(...directions.map(d => ({ type: 'move', text: d, floor: currentFloor })));
+        i = j;
+    }
+    
+    steps.push({ type: 'end', text: `到达 ${getNearestRoomName(path[path.length-1])}`, floor: path[path.length-1][2] });
+    return steps;
+}
+
+function analyzeTurn(coords) {
+    // 如果近似直线，生成“沿走廊直行”
+    // 如果有明显角度变化，分段生成“左转”、“右转”等
+    // 简化：取首尾方向，并查找途经的房间名作为参照
+    const start = coords[0], end = coords[coords.length-1];
+    const azimuth = Math.atan2(end[1]-start[1], end[0]-start[0]) * 180 / Math.PI;
+    // 根据方位生成指令（可细化）
+    return [`沿走廊直行约 ${Math.round(distance(start, end))} 米`];
 }

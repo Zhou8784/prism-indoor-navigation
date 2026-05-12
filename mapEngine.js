@@ -179,6 +179,15 @@ function drawRoute(pathCoords) {
     window.globalFullRoute = pathCoords;
     renderRouteOnCurrentFloor();
     startNavigationFollow(pathCoords);
+    const directions = generateDirections(pathCoords);
+    window.currentDirections = directions;
+    const html = directions.map((step, idx) => 
+        `<div class="direction-step ${step.type}">${step.text} ${step.floor ? `(${step.floor}F)` : ''}</div>`
+    ).join('');
+    document.getElementById('route-info').innerHTML = html;
+    
+    startNavigationFollow(pathCoords);
+
 }
 
 function renderRouteOnCurrentFloor() {
@@ -268,9 +277,26 @@ function toggle3D() {
 function startNavigationFollow(path) {
     if (!path || path.length < 2) return;
 
-    // 估算总长度，避免用户看到瞬间跳跃
+    // 清除之前的计时器
+    if (window.navTimer) {
+        clearTimeout(window.navTimer);
+        cancelAnimationFrame(window.navTimer);
+        window.navTimer = null;
+    }
+
     let idx = 0;
-    const speed = 120;  // 坐标单位/秒 (假设1单位≈1cm, 1.2m/s=120cm/s)
+    const speed = 120;  // 坐标单位/秒
+
+    function highlightStepAtPathIndex(pathIdx) {
+        const steps = window.currentDirections;
+        if (!steps) return;
+        document.querySelectorAll('.direction-step').forEach(el => el.classList.remove('active'));
+        const activeStep = steps.find(step => pathIdx >= step.fromIndex && pathIdx <= step.toIndex);
+        if (activeStep) {
+            const activeEl = document.querySelector(`.direction-step[data-step="${steps.indexOf(activeStep)}"]`);
+            if (activeEl) activeEl.classList.add('active');
+        }
+    }
 
     function step() {
         if (idx >= path.length) {
@@ -281,16 +307,15 @@ function startNavigationFollow(path) {
         const [x, y, floor] = path[idx];
         if (floor !== currentFloor) {
             filterFloor(floor);
-            // 楼层切换需要额外等待渲染
             setTimeout(() => {
                 map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+                highlightStepAtPathIndex(idx);
                 idx++;
                 window.navTimer = setTimeout(step, 800);
             }, 600);
             return;
         }
 
-        // 根据与上一点的距离计算飞行时间
         let duration = 0.8;
         if (idx > 0) {
             const prev = path[idx - 1];
@@ -298,7 +323,8 @@ function startNavigationFollow(path) {
             duration = Math.min(2.0, Math.max(0.5, dist / speed));
         }
 
-        map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+        map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration });
+        highlightStepAtPathIndex(idx);
         idx++;
         window.navTimer = setTimeout(() => {
             requestAnimationFrame(step);
@@ -318,4 +344,138 @@ function getMobileViewOffset() {
     // 展开时，地图可视区域高度约为 45vh，需要向上平移约 200 坐标单位
     // 可通过实际测试调整该数值
     return isCollapsed ? 0 : 200;
+}
+// ========== 导航指令生成 ==========
+
+/**
+ * 生成导航文字指引，并标注每步覆盖的路径点范围
+ * @param {Array<[x,y,floor]>} path 完整路径
+ * @returns {Array<{type:string, text:string, floor:number, fromIndex:number, toIndex:number}>}
+ */
+function generateDirections(path) {
+    if (!path || path.length < 2) return [];
+    
+    const steps = [];
+    let i = 0;
+    const n = path.length;
+    
+    // 起点
+    const startName = getNearestRoomName(path[0]);
+    steps.push({
+        type: 'start',
+        text: `从 ${startName} 出发`,
+        floor: path[0][2],
+        fromIndex: 0,
+        toIndex: 0
+    });
+    
+    // 遍历路径，切分成同层连续段 + 楼层切换点
+    while (i < n - 1) {
+        const [x1, y1, f1] = path[i];
+        const [x2, y2, f2] = path[i+1];
+        
+        // 楼层变化
+        if (f1 !== f2) {
+            const facilityName = getTransitionFacilityName(path[i], path[i+1]);
+            const direction = f2 > f1 ? '上楼' : '下楼';
+            steps.push({
+                type: 'floor_change',
+                text: `在 ${facilityName} ${direction}`,
+                floor: f2,
+                fromIndex: i,
+                toIndex: i+1
+            });
+            i++;
+            continue;
+        }
+        
+        // 同层移动：提取连续同层段，分析走向
+        let j = i;
+        while (j < n - 1 && path[j+1][2] === f1) j++;
+        const segment = path.slice(i, j+1);
+        
+        const subSteps = analyzeSegment(segment);
+        let segStart = i;
+        for (const sub of subSteps) {
+            const segEnd = segStart + sub.count; // sub.count 是点数偏移
+            steps.push({
+                type: 'move',
+                text: sub.text,
+                floor: f1,
+                fromIndex: segStart,
+                toIndex: segEnd
+            });
+            segStart = segEnd;
+        }
+        i = j;
+    }
+    
+    // 终点
+    const endName = getNearestRoomName(path[n-1]);
+    steps.push({
+        type: 'end',
+        text: `到达 ${endName}`,
+        floor: path[n-1][2],
+        fromIndex: n-1,
+        toIndex: n-1
+    });
+    
+    return steps;
+}
+
+/** 分段分析，返回 {text, count} 数组 */
+function analyzeSegment(segment) {
+    if (segment.length < 2) return [];
+    const result = [];
+    let start = 0;
+    for (let k = 1; k < segment.length; k++) {
+        const prevAngle = Math.atan2(segment[k][1]-segment[start][1], segment[k][0]-segment[start][0]) * 180 / Math.PI;
+        const nextAngle = k+1 < segment.length ? Math.atan2(segment[k+1][1]-segment[k][1], segment[k+1][0]-segment[k][0]) * 180 / Math.PI : prevAngle;
+        const angleDiff = angleDelta(nextAngle, prevAngle);
+        if (Math.abs(angleDiff) > 30 && k > start) {
+            if (k > start) {
+                const dist = distance(segment[start], segment[k]);
+                result.push({ text: `沿走廊直行约 ${Math.round(dist)} 米`, count: k - start });
+            }
+            const turn = angleDiff > 0 ? '左转' : '右转';
+            const ref = getNearRoomName(segment[k]);
+            result.push({ text: `${turn}${ref ? '，经过 ' + ref : ''}`, count: 1 });
+            start = k;
+        }
+    }
+    if (start < segment.length - 1) {
+        const dist = distance(segment[start], segment[segment.length-1]);
+        result.push({ text: `沿走廊直行约 ${Math.round(dist)} 米`, count: segment.length - 1 - start });
+    }
+    return result;
+}
+
+function angleDelta(a1, a2) {
+    let d = a1 - a2;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    return d;
+}
+
+function getNearestRoomName([x, y, floor]) {
+    const candidates = allRooms.filter(r => r.floor_number === floor && !r.type.includes('走廊') && r.type !== '楼梯间' && r.type !== '电梯');
+    let minDist = Infinity, name = '当前位置';
+    candidates.forEach(r => {
+        const d = distance([x,y], r.center);
+        if (d < minDist) {
+            minDist = d;
+            name = r.name;
+        }
+    });
+    return name;
+}
+
+function getTransitionFacilityName(p1, p2) {
+    const candidates = allRooms.filter(r => (r.type === '楼梯间' || r.type === '电梯') && r.floor_number === p1[2]);
+    let best = null, bestDist = Infinity;
+    candidates.forEach(r => {
+        const d1 = distance([p1[0], p1[1]], r.center);
+        if (d1 < bestDist) { bestDist = d1; best = r; }
+    });
+    return best ? best.name : '楼梯/电梯';
 }
