@@ -145,9 +145,7 @@ function filterPoiByTypes(activeTypes) {
 function flyToRoom(roomId) {
     const room = allRooms.find(r => r.room_id === roomId);
     if (room) {
-        const offset = getMobileViewOffset();
-        const targetY = room.center[1] - offset;
-        map.setView([targetY, room.center[0]], 1.5);
+        map.setView([room.center[1], room.center[0]], 1.5);
         filterFloor(room.floor_number);
         L.popup()
             .setLatLng([room.center[1], room.center[0]])
@@ -283,7 +281,7 @@ function startNavigationFollow(path) {
             filterFloor(floor);
             // 楼层切换需要额外等待渲染
             setTimeout(() => {
-                map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+                map.flyTo([y, x], 1.5, { animate: true, duration: 0.8 });
                 idx++;
                 window.navTimer = setTimeout(step, 800);
             }, 600);
@@ -298,7 +296,7 @@ function startNavigationFollow(path) {
             duration = Math.min(2.0, Math.max(0.5, dist / speed));
         }
 
-        map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+        map.flyTo([y, x], 1.5, { animate: true, duration });
         idx++;
         window.navTimer = setTimeout(() => {
             requestAnimationFrame(step);
@@ -306,16 +304,4 @@ function startNavigationFollow(path) {
     }
 
     step();
-}
-/**
- * 移动端抽屉展开时，地图视口需向上偏移以避免被遮挡
- * @returns {number} 地图 Y 坐标偏移量
- */
-function getMobileViewOffset() {
-    if (window.innerWidth > 768) return 0;
-    const sidebar = document.getElementById('sidebar');
-    const isCollapsed = sidebar?.classList.contains('collapsed');
-    // 展开时，地图可视区域高度约为 45vh，需要向上平移约 200 坐标单位
-    // 可通过实际测试调整该数值
-    return isCollapsed ? 0 : 200;
 }

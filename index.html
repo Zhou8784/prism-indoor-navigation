@@ -100,6 +100,9 @@
             </div> <!-- /.sidebar-content -->
         </aside>
 
+        <!-- ======================= -->
+        <!--  地图区域                -->
+        <!-- ======================= -->
         <main id="map-container" class="map-container">
             <div class="map-controls">
                 <div class="floor-switcher">
@@ -370,62 +373,56 @@
 
 <!--新增：移动端折叠控制 -->
 <script>
-(function() {
+    (function() {
     function isMobile() { return window.innerWidth <= 768; }
 
     const sidebar = document.getElementById('sidebar');
-    const toggleBtn = document.getElementById('sidebarToggle');
-    const icon = toggleBtn?.querySelector('.toggle-icon');
-    const routePanel = document.getElementById('route-panel');
-    const content = document.querySelector('.sidebar-content');
+    const toggle = document.getElementById('sidebarToggle');
+    const icon = toggle ? toggle.querySelector('.toggle-icon') : null;
 
-    // 可选：收起时自动隐藏路径面板，若不需要可移除整个函数
-    function updateRoutePanelVisibility(collapsed) {
-        if (!routePanel) return;
-        if (collapsed) {
-            routePanel.style.display = 'none';
-            if (typeof clearRoute === 'function') clearRoute(); // 同时清除路径
-        }
-    }
-
-    // 统一折叠/展开
+    // 统一切换状态逻辑
     function toggleCollapse(forceState) {
         if (!sidebar) return;
         
         let isCollapsed;
         if (typeof forceState === 'boolean') {
             isCollapsed = forceState;
-            sidebar.classList.toggle('collapsed', forceState);
+            if (isCollapsed) sidebar.classList.add('collapsed');
+            else sidebar.classList.remove('collapsed');
         } else {
-            isCollapsed = !sidebar.classList.contains('collapsed');
-            sidebar.classList.toggle('collapsed', isCollapsed);
+            isCollapsed = sidebar.classList.toggle('collapsed');
         }
         
+        // 更新图标状态
         if (icon) {
             icon.textContent = isCollapsed ? 'expand_less' : 'expand_more';
         }
         
-        updateRoutePanelVisibility(isCollapsed);
-        
-        // 重绘地图以适应布局变化
+        // 触发地图重绘
         if (window.map && typeof window.map.invalidateSize === 'function') {
-            setTimeout(() => window.map.invalidateSize({ animate: true }), 300);
+            setTimeout(function() { window.map.invalidateSize({ animate: true }); }, 300);
         }
     }
 
-    // 点击头部切换
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', function(e) {
+    // 1. 点击事件支持
+    if (toggle) {
+        toggle.addEventListener('click', function(e) {
+            // 防止点击导入按钮时触发折叠
             if (e.target.closest('#import-schedule-btn')) return; 
             toggleCollapse();
         });
     }
 
-    // 触屏滑动折叠，含 iOS 弹性滚动阻止
-    let startY = null, currentY = null;
+    // 2. 滑动触摸事件支持 (Swipe Up / Down)
+    let startY = null;
+    let currentY = null;
+
     if (sidebar) {
         sidebar.addEventListener('touchstart', function(e) {
-            const atTop = content ? content.scrollTop <= 5 : true;
+            // 只在头部区域，或者当内容滚动到最顶部时，才允许滑动折叠抽屉
+            const content = document.querySelector('.sidebar-content');
+            const atTop = content ? content.scrollTop === 0 : true;
+            
             if (e.target.closest('.sidebar-header') || atTop) {
                 startY = e.touches[0].clientY;
             }
@@ -434,28 +431,27 @@
         sidebar.addEventListener('touchmove', function(e) {
             if (startY !== null) {
                 currentY = e.touches[0].clientY;
-                // 阻止页面整体回弹（iOS 橡皮筋效果）
-                if (content && content.scrollTop === 0 && currentY - startY > 0) {
-                    e.preventDefault();
-                }
             }
-        }, { passive: false });
+        }, { passive: true });
 
         sidebar.addEventListener('touchend', function() {
             if (startY !== null && currentY !== null) {
                 const diffY = currentY - startY;
+                
+                // 滑动距离超过 50px 则触发动作
                 if (diffY > 50) {
-                    toggleCollapse(true);  // 向下划收起
+                    toggleCollapse(true);  // 向下划，收起
                 } else if (diffY < -50) {
-                    toggleCollapse(false); // 向上划展开
+                    toggleCollapse(false); // 向上划，展开
                 }
             }
+            // 重置坐标
             startY = null;
             currentY = null;
         });
     }
 
-    // 响应窗口尺寸变化，重置移动端状态
+    // 屏幕尺寸变化时的防御性处理
     let prevIsMobile = isMobile();
     window.addEventListener('resize', function() {
         const nowIsMobile = isMobile();
@@ -466,9 +462,9 @@
         }
     });
 
-    // 移动端初始化：默认收起
+    // 移动端初始状态：默认收起（或根据你的产品逻辑改为 false 默认展开）
     if (isMobile()) {
-        toggleCollapse(true);
+        toggleCollapse(true); 
     }
 })();
 </script>
