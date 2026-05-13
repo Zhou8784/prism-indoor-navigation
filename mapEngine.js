@@ -1,9 +1,9 @@
-
 let map;
 let currentFloor = 1;
 let allRooms = [];
 let roomLayerGroup;
 
+// 初始化地图
 function initMap() {
     map = L.map('map', {
         crs: L.CRS.Simple,
@@ -15,7 +15,7 @@ function initMap() {
 
     map.setView([900, 550], 0);
 
-    extractAllRooms();
+    extractAllRooms(); // 提取所有房间、楼层信息
     
     roomLayerGroup = L.layerGroup().addTo(map);
     redrawRoomsByFloor(currentFloor);
@@ -23,10 +23,12 @@ function initMap() {
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 }
 
+// ------------------- 新增：提取所有房间节点并添加 floor 属性 -------------------
 function extractAllRooms() {
     allRooms = [];
     MAP_DATA.buildings.forEach(building => {
         building.floors.forEach(floor => {
+            const floorNumber = floor.floor_number;
             floor.rooms.forEach(room => {
                 const polygon = room.polygon;
                 if (!polygon || polygon.length < 3) return;
@@ -37,7 +39,7 @@ function extractAllRooms() {
                     ...room,
                     building_id: building.building_id,
                     building_name: building.building_name,
-                    floor_number: floor.floor_number,
+                    floor_number: floorNumber,
                     center: center,
                     polygon: polygon
                 });
@@ -46,6 +48,7 @@ function extractAllRooms() {
     });
 }
 
+// ------------------- 原有函数保留 -------------------
 function redrawRoomsByFloor(floor) {
     roomLayerGroup.clearLayers();
     const roomsOnFloor = allRooms.filter(r => r.floor_number === floor);
@@ -61,23 +64,19 @@ function redrawRoomsByFloor(floor) {
             interactive: true
         }).addTo(roomLayerGroup);
         
-        // 绑定点击事件
         polygon.on('click', function(e) {
             L.DomEvent.stopPropagation(e);
-            if (window.pickingMode) {
-                if (typeof window.setPickedPoint === 'function') {
-                    window.setPickedPoint({
-                        roomId: room.room_id,
-                        name: room.name,
-                        center: room.center
-                    });
-                }
+            if (window.pickingMode && typeof window.setPickedPoint === 'function') {
+                window.setPickedPoint({
+                    roomId: room.room_id,
+                    name: room.name,
+                    center: room.center
+                });
             } else {
                 polygon.bindPopup(`<strong>${room.name}</strong><br>${room.type}`).openPopup();
             }
         });
 
-        // 文字标签
         const label = room.name.replace(room.building_name, '').replace(/楼/g, '');
         L.marker([room.center[1], room.center[0]], {
             icon: L.divIcon({
@@ -97,9 +96,10 @@ function filterFloor(floor) {
         btn.classList.toggle('active', btn.dataset.floor == floor);
     });
     
-    // 【核心修改】：切换楼层时，自动重绘该层的导航路线
+    // 重绘当前楼层的路线
     renderRouteOnCurrentFloor(); 
 }
+
 function toggleViewMode() {
     alert('当前为 Leaflet 平面图，暂不支持 3D 视图。');
 }
@@ -190,27 +190,15 @@ function drawRoute(pathCoords) {
 }
 
 function renderRouteOnCurrentFloor() {
-    if (window.currentRouteLine) {
-        map.removeLayer(window.currentRouteLine);
-    }
-
+    if (window.currentRouteLine) map.removeLayer(window.currentRouteLine);
     if (!window.globalFullRoute) return;
 
-    // 4.26 严格校验三维点
-    const pts = window.globalFullRoute.filter(p =>
-        Array.isArray(p) &&
-        p.length === 3 &&
-        p[2] === currentFloor
-    );
-
+    // 只显示当前楼层
+    const pts = window.globalFullRoute.filter(p => p[2] === currentFloor);
     if (pts.length < 2) return;
 
     const latlngs = pts.map(p => [p[1], p[0]]);
-
-    window.currentRouteLine = L.polyline(latlngs, {
-        color: '#2563eb',
-        weight: 4
-    }).addTo(map);
+    window.currentRouteLine = L.polyline(latlngs, { color:'#2563eb', weight:4 }).addTo(map);
 }
 function clearRoute() {
     if (window.currentRouteLine) {
