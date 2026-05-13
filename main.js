@@ -9,6 +9,7 @@ function getCurrentPreference() {
     const radio = document.querySelector('input[name="route-type"]:checked');
     return radio ? radio.value : 'shortest';
 }
+const DEFAULT_START_ROOM_ID = '1-elevator';
 
 // ========== 默认课表 ==========
 const DEFAULT_SCHEDULE = [
@@ -261,7 +262,7 @@ function showRoomListModal(type) {
     const roomId = el.dataset.roomid;
     const room = allRooms.find(r => r.room_id === roomId);
     if (room) {
-        const defaultStart = allRooms.find(r => r.room_id === '1-stair1') || allRooms[0];
+        const defaultStart = allRooms.find(r => r.room_id === '1-elevator') || allRooms[0];
         startPoint = { roomId: defaultStart.room_id, name: defaultStart.name, center: defaultStart.center };
         endPoint = { roomId: room.room_id, name: room.name, center: room.center };
         document.getElementById('start-point-label').textContent = startPoint.name;
@@ -316,7 +317,7 @@ function renderScheduleList() {
         alert(`未找到教室: ${roomName}`);
         return;
     }
-    const startRoomId = '1-stair1';
+    const startRoomId = '1-elevator';
     const preference = getCurrentPreference();
     const path = findPath(startRoomId, targetRoomId, preference);
     if (path && path.length > 0) {
