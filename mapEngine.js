@@ -1,7 +1,7 @@
-
 let map;
 let currentFloor = 1;
-let allRooms = [];
+// 【重要】必须改为全局变量，供 routing.js 调用
+window.allRooms = [];
 let roomLayerGroup;
 
 function initMap() {
@@ -25,7 +25,7 @@ function initMap() {
 }
 
 function extractAllRooms() {
-    allRooms = [];
+    window.allRooms = [];
     MAP_DATA.buildings.forEach(building => {
         building.floors.forEach(floor => {
             floor.rooms.forEach(room => {
@@ -34,7 +34,7 @@ function extractAllRooms() {
                 let sumX = 0, sumY = 0;
                 polygon.forEach(p => { sumX += p[0]; sumY += p[1]; });
                 const center = [sumX / polygon.length, sumY / polygon.length];
-                allRooms.push({
+                window.allRooms.push({
                     ...room,
                     building_id: building.building_id,
                     building_name: building.building_name,
@@ -46,10 +46,9 @@ function extractAllRooms() {
         });
     });
 }
-
 function redrawRoomsByFloor(floor) {
     roomLayerGroup.clearLayers();
-    const roomsOnFloor = allRooms.filter(r => r.floor_number === floor);
+    const roomsOnFloor = window.allRooms.filter(r => r.floor_number === floor);
     roomsOnFloor.forEach(room => {
         const latlngs = room.polygon.map(p => [p[1], p[0]]);
         const color = APP_CONFIG.poiColors[room.type] || APP_CONFIG.poiColors.default;
@@ -62,7 +61,6 @@ function redrawRoomsByFloor(floor) {
             interactive: true
         }).addTo(roomLayerGroup);
         
-        // 绑定点击事件
         polygon.on('click', function(e) {
             L.DomEvent.stopPropagation(e);
             if (window.pickingMode) {
@@ -78,7 +76,6 @@ function redrawRoomsByFloor(floor) {
             }
         });
 
-        // 文字标签
         const label = room.name.replace(room.building_name, '').replace(/楼/g, '');
         L.marker([room.center[1], room.center[0]], {
             icon: L.divIcon({
@@ -97,17 +94,16 @@ function filterFloor(floor) {
     document.querySelectorAll('.floor-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.floor == floor);
     });
-    
-    // 【核心修改】：切换楼层时，自动重绘该层的导航路线
     renderRouteOnCurrentFloor(); 
 }
+
 function toggleViewMode() {
     alert('当前为 Leaflet 平面图，暂不支持 3D 视图。');
 }
 
 function filterPoiByTypes(activeTypes) {
     roomLayerGroup.clearLayers();
-    const roomsOnFloor = allRooms.filter(r => r.floor_number === currentFloor && activeTypes.includes(r.type));
+    const roomsOnFloor = window.allRooms.filter(r => r.floor_number === currentFloor && activeTypes.includes(r.type));
     roomsOnFloor.forEach(room => {
         const latlngs = room.polygon.map(p => [p[1], p[0]]);
         const color = APP_CONFIG.poiColors[room.type] || APP_CONFIG.poiColors.default;
@@ -143,7 +139,7 @@ function filterPoiByTypes(activeTypes) {
 }
 
 function flyToRoom(roomId) {
-    const room = allRooms.find(r => r.room_id === roomId);
+    const room = window.allRooms.find(r => r.room_id === roomId);
     if (room) {
         map.setView([room.center[1], room.center[0]], 1.5);
         filterFloor(room.floor_number);
@@ -155,16 +151,15 @@ function flyToRoom(roomId) {
 }
 
 function getRoomCenter(roomId) {
-    const room = allRooms.find(r => r.room_id === roomId);
+    const room = window.allRooms.find(r => r.room_id === roomId);
     return room ? room.center : null;
 }
 
 function getStairCenters(floor) {
-    return allRooms.filter(r => r.type === '楼梯间' && r.floor_number === floor).map(r => r.center);
+    return window.allRooms.filter(r => r.type === '楼梯间' && r.floor_number === floor).map(r => r.center);
 }
 
 function drawRoute(pathCoords) {
-    // 4.27强力清除旧路线（即使有残留）
     if (window.currentRouteLine) {
         map.removeLayer(window.currentRouteLine);
         window.currentRouteLine = null;
@@ -186,7 +181,6 @@ function renderRouteOnCurrentFloor() {
 
     if (!window.globalFullRoute) return;
 
-    // 4.26 严格校验三维点
     const pts = window.globalFullRoute.filter(p =>
         Array.isArray(p) &&
         p.length === 3 &&
@@ -202,6 +196,7 @@ function renderRouteOnCurrentFloor() {
         weight: 4
     }).addTo(map);
 }
+
 function clearRoute() {
     if (window.currentRouteLine) {
         map.removeLayer(window.currentRouteLine);
@@ -219,7 +214,7 @@ function clearRoute() {
     }
 }
 
-let is3D = false; // 初始为 2D 状态
+let is3D = false;
 
 function toggle3D() {
     is3D = !is3D;
@@ -227,48 +222,31 @@ function toggle3D() {
     const btn3d = document.getElementById('btn-3d');
 
     if (is3D) {
-        // 进入 3D 模式：倾斜 + 旋转 + 透视
-        // perspective(1000px): 设置透视距离，产生近大远小的立体感
-        // rotateX(50deg): 绕X轴倾斜，形成俯视立体视角
-        // scale(1.1): 稍微放大一点，防止倾斜后边缘露出
         mapContainer.style.transform = 'perspective(1000px) rotateX(50deg) scale(1.1)';
-        
-        // 更新按钮样式
         btn3d.classList.add('bg-blue-600', 'text-white');
         btn3d.classList.remove('text-primary', 'bg-white');
-        
-        // 关键：为了在3D视角下标记和房间多边形依然清晰，可以尝试对内部元素做反向补偿（视情况而定）
-        // 这里提供一个简单的思路，如果效果好就保留，不好就删掉
         document.querySelectorAll('.leaflet-marker-icon, .leaflet-popup').forEach(el => {
-            el.style.transform += ' rotateX(-30deg)'; // 反向补偿，让图标不跟着完全倒下
+            el.style.transform += ' rotateX(-30deg)';
         });
-        
     } else {
-        // 恢复 2D 模式
         mapContainer.style.transform = 'none';
-        
-        // 恢复按钮样式
         btn3d.classList.remove('bg-blue-600', 'text-white');
         btn3d.classList.add('text-primary', 'bg-white');
-        
-        // 恢复所有元素的补偿
-         document.querySelectorAll('.leaflet-marker-icon, .leaflet-popup').forEach(el => {
+        document.querySelectorAll('.leaflet-marker-icon, .leaflet-popup').forEach(el => {
             el.style.transform = el.style.transform.replace(' rotateX(-30deg)', '');
         });
     }
     
-    // 关键点：切换视角后需要通知 Leaflet 重新计算视野，防止报错
     setTimeout(() => {
         map.invalidateSize({animate: true});
-    }, 500); // 等 500ms CSS过渡动画完成后再重置
+    }, 500);
 }
-//4.26增加自动跟随
+
 function startNavigationFollow(path) {
     if (!path || path.length < 2) return;
 
-    // 估算总长度，避免用户看到瞬间跳跃
     let idx = 0;
-    const speed = 120;  // 坐标单位/秒 (假设1单位≈1cm, 1.2m/s=120cm/s)
+    const speed = 120;
 
     function step() {
         if (idx >= path.length) {
@@ -279,7 +257,6 @@ function startNavigationFollow(path) {
         const [x, y, floor] = path[idx];
         if (floor !== currentFloor) {
             filterFloor(floor);
-            // 楼层切换需要额外等待渲染
             setTimeout(() => {
                 map.flyTo([y, x], 1.5, { animate: true, duration: 0.8 });
                 idx++;
@@ -288,7 +265,6 @@ function startNavigationFollow(path) {
             return;
         }
 
-        // 根据与上一点的距离计算飞行时间
         let duration = 0.8;
         if (idx > 0) {
             const prev = path[idx - 1];
