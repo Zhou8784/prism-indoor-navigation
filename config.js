@@ -19,6 +19,6 @@ window.APP_CONFIG = {
         '资料室': '#f97316',
         '教师休息室': '#14b8a6',
         '垃圾桶': '#f97316',
-        'default': '#dfdad3'
+        'default': '#7bb751'
     }
 };
