@@ -97,8 +97,10 @@ function filterFloor(floor) {
     document.querySelectorAll('.floor-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.floor == floor);
     });
+    
+    // 【核心修改】：切换楼层时，自动重绘该层的导航路线
+    renderRouteOnCurrentFloor(); 
 }
-
 function toggleViewMode() {
     alert('当前为 Leaflet 平面图，暂不支持 3D 视图。');
 }
@@ -143,7 +145,9 @@ function filterPoiByTypes(activeTypes) {
 function flyToRoom(roomId) {
     const room = allRooms.find(r => r.room_id === roomId);
     if (room) {
-        map.setView([room.center[1], room.center[0]], 1.5);
+        const offset = getMobileViewOffset();
+        const targetY = room.center[1] - offset;
+        map.setView([targetY, room.center[0]], 1.5);
         filterFloor(room.floor_number);
         L.popup()
             .setLatLng([room.center[1], room.center[0]])
@@ -162,27 +166,60 @@ function getStairCenters(floor) {
 }
 
 function drawRoute(pathCoords) {
+    // 4.27强力清除旧路线（即使有残留）
+    if (window.currentRouteLine) {
+        map.removeLayer(window.currentRouteLine);
+        window.currentRouteLine = null;
+    }
+    if (window.currentRouteMarker) {
+        map.removeLayer(window.currentRouteMarker);
+        window.currentRouteMarker = null;
+    }
+
+    window.globalFullRoute = pathCoords;
+    renderRouteOnCurrentFloor();
+    startNavigationFollow(pathCoords);
+}
+
+function renderRouteOnCurrentFloor() {
     if (window.currentRouteLine) {
         map.removeLayer(window.currentRouteLine);
     }
-    
-    // 将坐标从 [x, y] 转换为 Leaflet 的 [y, x]
-    const latLngs = pathCoords.map(p => [p[1], p[0]]);
-    
-    window.currentRouteLine = L.polyline(latLngs, {
-        color: '#003f87',
-        weight: 5,
-        className: 'nav-path-animate' // 应用动画类
+
+    if (!window.globalFullRoute) return;
+
+    // 4.26 严格校验三维点
+    const pts = window.globalFullRoute.filter(p =>
+        Array.isArray(p) &&
+        p.length === 3 &&
+        p[2] === currentFloor
+    );
+
+    if (pts.length < 2) return;
+
+    const latlngs = pts.map(p => [p[1], p[0]]);
+
+    window.currentRouteLine = L.polyline(latlngs, {
+        color: '#2563eb',
+        weight: 4
     }).addTo(map);
 }
-
 function clearRoute() {
-    if (window.routeLine) {
-        map.removeLayer(window.routeLine);
-        window.routeLine = null;
+    if (window.currentRouteLine) {
+        map.removeLayer(window.currentRouteLine);
+        window.currentRouteLine = null;
+    }
+    if (window.currentRouteMarker) {
+        map.removeLayer(window.currentRouteMarker);
+        window.currentRouteMarker = null;
+    }
+    window.globalFullRoute = null;
+    if (window.navTimer) {
+        clearTimeout(window.navTimer);
+        cancelAnimationFrame(window.navTimer);
+        window.navTimer = null;
     }
 }
-// 在 mapEngine.js 底部添加
 
 let is3D = false; // 初始为 2D 状态
 
@@ -226,4 +263,59 @@ function toggle3D() {
     setTimeout(() => {
         map.invalidateSize({animate: true});
     }, 500); // 等 500ms CSS过渡动画完成后再重置
+}
+//4.26增加自动跟随
+function startNavigationFollow(path) {
+    if (!path || path.length < 2) return;
+
+    // 估算总长度，避免用户看到瞬间跳跃
+    let idx = 0;
+    const speed = 120;  // 坐标单位/秒 (假设1单位≈1cm, 1.2m/s=120cm/s)
+
+    function step() {
+        if (idx >= path.length) {
+            window.navTimer = null;
+            return;
+        }
+
+        const [x, y, floor] = path[idx];
+        if (floor !== currentFloor) {
+            filterFloor(floor);
+            // 楼层切换需要额外等待渲染
+            setTimeout(() => {
+                map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+                idx++;
+                window.navTimer = setTimeout(step, 800);
+            }, 600);
+            return;
+        }
+
+        // 根据与上一点的距离计算飞行时间
+        let duration = 0.8;
+        if (idx > 0) {
+            const prev = path[idx - 1];
+            const dist = Math.hypot(x - prev[0], y - prev[1]);
+            duration = Math.min(2.0, Math.max(0.5, dist / speed));
+        }
+
+        map.flyTo([y - getMobileViewOffset(), x], 1.5, { animate: true, duration: 0.8 });
+        idx++;
+        window.navTimer = setTimeout(() => {
+            requestAnimationFrame(step);
+        }, duration * 1000 + 200);
+    }
+
+    step();
+}
+/**
+ * 移动端抽屉展开时，地图视口需向上偏移以避免被遮挡
+ * @returns {number} 地图 Y 坐标偏移量
+ */
+function getMobileViewOffset() {
+    if (window.innerWidth > 768) return 0;
+    const sidebar = document.getElementById('sidebar');
+    const isCollapsed = sidebar?.classList.contains('collapsed');
+    // 展开时，地图可视区域高度约为 45vh，需要向上平移约 200 坐标单位
+    // 可通过实际测试调整该数值
+    return isCollapsed ? 0 : 200;
 }

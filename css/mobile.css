@@ -1,13 +1,112 @@
+:root {
+    --sidebar-height: 55vh;           /* 侧边栏展开高度 */
+    --sidebar-collapsed-offset: 70px; /* 折叠后露出的头部高度 */
+    --route-panel-gap: 10px;          /* 路径面板与侧边栏间距 */
+}
+
 @media screen and (max-width: 768px) {
-    .app-container { flex-direction: column; }
-    .sidebar {
-        width: 100%; height: 45vh; border-right: none; border-top: 1px solid #ddd;
-        order: 2; padding: 15px; border-radius: 24px 24px 0 0;
-        position: absolute; bottom: 0; left: 0; z-index: 500;
+    .app-container { 
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
     }
-    .map-container { order: 1; height: 100vh; width: 100%; }
-    .map-controls { top: 10px; right: 10px; }
-    .reminder-settings { left: 10px; top: 10px; }
-    .route-panel { left: 10px; right: 10px; bottom: 50vh; }
-    .floor-switcher { flex-direction: row; }
+
+    /* 地图全屏底层，手势隔离 */
+    .map-container { 
+        height: 100vh !important; 
+        width: 100%; 
+        position: absolute;
+        top: 0; left: 0;
+        z-index: 1;
+        touch-action: pan-x pan-y pinch-zoom;  /* 允许地图平移缩放，防止与抽屉滑动冲突 */
+    }
+
+    /* 底部抽屉 */
+    .sidebar {
+        width: 100%; 
+        height: var(--sidebar-height) !important;
+        padding: 0; 
+        border-radius: 24px 24px 0 0; 
+        position: absolute; 
+        bottom: 0; 
+        left: 0; 
+        z-index: 500;
+        background: rgba(255, 255, 255, 0.95); 
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-top: 1px solid rgba(255, 255, 255, 0.5);
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 -5px 25px rgba(0,0,0,0.1);
+        transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+
+    /* 折叠状态：向下平移，只留头部 */
+    .sidebar.collapsed {
+        transform: translateY(calc(100% - var(--sidebar-collapsed-offset)));
+    }
+
+    /* 头部样式 */
+    .sidebar-header {
+        height: var(--sidebar-collapsed-offset);
+        padding: 10px 20px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+    }
+
+    .handle-bar {
+        width: 40px;
+        height: 5px;
+        background-color: #cbd5e1;
+        border-radius: 4px;
+        margin-bottom: 10px;
+    }
+
+    .header-content {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .header-content h2 { 
+        margin: 0; font-size: 1.1rem; font-weight: 600; 
+    }
+    
+    .header-actions { 
+        display: flex; align-items: center; gap: 8px; 
+    }
+
+    /* 内容区独立滚动，隐藏滚动条，手势仅垂直滚动 */
+    .sidebar-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 15px 20px;
+        touch-action: pan-y;          /* 只允许垂直滚动，防止影响地图 */
+        scrollbar-width: none; 
+    }
+    .sidebar-content::-webkit-scrollbar { display: none; }
+
+    /* 路径面板动态定位 */
+    .route-panel { 
+        position: absolute;
+        left: 10px; 
+        right: 10px; 
+        bottom: calc(var(--sidebar-height) + var(--route-panel-gap));
+        transition: bottom 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        z-index: 501 !important;      /* 高于侧边栏，确保不被遮挡 */
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 2px 20px rgba(0,0,0,0.2);
+    }
+
+    /* 折叠时路径面板下沉到头部上方 */
+    .sidebar.collapsed ~ .route-panel {
+        bottom: calc(var(--sidebar-collapsed-offset) + var(--route-panel-gap));
+    }
 }

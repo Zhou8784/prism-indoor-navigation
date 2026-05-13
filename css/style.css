@@ -330,3 +330,18 @@ body { overflow: hidden; background: #f0f4f8; }
     border-radius: 20px;
     font-size: 0.8rem;
 }
+.direction-step.active {
+    background: #e0e7ff;
+    border-left: 3px solid #2a5298;
+    padding-left: 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    transition: background 0.3s, border 0.3s;
+}
+.step-num {
+    display: inline-block;
+    width: 24px;
+    text-align: center;
+    font-weight: 700;
+    color: #2a5298;
+}
