@@ -19,21 +19,20 @@ function isPointInCorridorPolygon(point, corridors) {
 }
 
 function buildGraphFromCorridors(floor, buildingId = null, preference = 'shortest') {
-  // 用 floor + buildingId 做缓存 key
+  const cacheKey = `${floor}_${buildingId || 'all'}`;
+  if (GRAPH_CACHE.has(cacheKey)) return GRAPH_CACHE.get(cacheKey);
+
+  // 1. 按楼层过滤走廊
   let corridorData = MAP_DATA.corridors.filter(c => c.floor === floor);
-  
-  // 2. 【新增】如果传入了 buildingId，强制只加载该楼的走廊（断绝跨楼连接）
   if (buildingId) {
     corridorData = corridorData.filter(c => c.building_id === buildingId);
   }
 
-  // 3. 获取该楼层房间，同样过滤 buildingId
+  // 2. 按楼层&建筑ID过滤房间（必须有 building_id）
   let roomsOnFloor = allRooms.filter(r => r.floor_number === floor);
   if (buildingId) {
     roomsOnFloor = roomsOnFloor.filter(r => r.building_id === buildingId);
   }
-  const cacheKey = `${floor}_${buildingId || 'all'}`;
-  if (GRAPH_CACHE.has(cacheKey)) return GRAPH_CACHE.get(cacheKey);
 
   const nodes = [];
   const nodeMap = new Map();
@@ -48,16 +47,7 @@ function buildGraphFromCorridors(floor, buildingId = null, preference = 'shortes
     return nodeMap.get(id);
   }
 
-  // 1. 过滤走廊：先按楼层，再按 buildingId（如果走廊数据里没有 buildingId，可以先不加过滤，但通过房间关联来隔离）
-  let corridorData = MAP_DATA.corridors.filter(c => c.floor === floor);
-  
-  // 2. 过滤房间：必须按 buildingId 隔离！
-  let corridorData = MAP_DATA.corridors.filter(c => c.floor === floor);
-if (buildingId) {
-  corridorData = corridorData.filter(c => c.building_id === buildingId);
-}
-
-  // 走廊主干建图 (与之前相同)
+  // 走廊主干建图
   corridorData.forEach(c => {
     const path = c.path;
     for (let i = 1; i < path.length; i++) {
@@ -69,7 +59,7 @@ if (buildingId) {
     }
   });
 
-  // 房间接入 (与之前相同，但只接入 roomsOnFloor)
+  // 房间接入
   roomsOnFloor.forEach(room => {
     const center = room.center;
     let bestProj = null, bestSeg = null, minDist = Infinity;
@@ -87,6 +77,8 @@ if (buildingId) {
       }
     });
     if (!bestProj || minDist > 200) return;
+    
+    // 判断投影点是否在走廊内
     const inCorridor = isPointInCorridorPolygon(bestProj, corridorData);
     let doorPoint = bestProj;
     if (!inCorridor) {
@@ -101,8 +93,8 @@ if (buildingId) {
       edges: [],
       type: room.type
     };
-
     nodes.push(roomNode);
+
     const doorNode = getOrCreateNode(doorPoint);
     const d1 = distance(center, doorPoint);
     roomNode.edges.push({ to: doorNode.id, weight: d1 });
@@ -209,77 +201,70 @@ function matchStairs(startFloor, endFloor) {
 function findPath(startRoomId, endRoomId, preference = 'shortest') {
   const startRoom = allRooms.find(r => r.room_id === startRoomId);
   const endRoom = allRooms.find(r => r.room_id === endRoomId);
-
-  if (!startRoom || !endRoom) {
-    console.error('起点或终点房间不存在');
-    return [];
-  }
+  if (!startRoom || !endRoom) return [];
 
   const sf = startRoom.floor_number;
   const ef = endRoom.floor_number;
+  const sBId = startRoom.building_id;
+  const eBId = endRoom.building_id;
 
-  // 同层规划：直接在当前楼层图上计算最短路径（偏好影响可通行节点）
-   if (sf === ef && startRoom.building_id === endRoom.building_id) {
-    const nodes = buildGraphFromCorridors(sf, startRoom.building_id, preference);
+  // 普通模式：同楼同层
+  if (sf === ef && sBId === eBId) {
+    const nodes = buildGraphFromCorridors(sf, sBId, preference);
     return dijkstra(nodes, startRoomId, endRoomId, preference);
-    return findPathCrossBuilding(startRoomId, endRoomId, preference);
   }
 
-  // 跨层规划
-  // 根据偏好选择跨层通道：楼梯 or 电梯
-  const connectorsFilter = (preference === 'accessible')
-    ? r => r.type === '电梯' && r.floor_number === sf  // 无障碍只用电梯
-    : r => r.type === '楼梯间' && r.floor_number === sf;
+  // 跨楼 / 跨层模式：强制走楼梯/电梯 -> 1层 -> 目标楼梯/电梯 -> 目标楼层
+  // 1. 获取本层最近楼梯 (start) -> 本楼1层楼梯 (mid1)
+  const sConnectors = allRooms.filter(r => 
+    (r.type === '楼梯间' || r.type === '电梯') && 
+    r.building_id === sBId && 
+    r.floor_number === sf
+  );
+  // 2. 获取目标楼1层楼梯 (mid2) -> 目标楼层楼梯/电梯 (end)
+  const eConnectors = allRooms.filter(r => 
+    (r.type === '楼梯间' || r.type === '电梯') && 
+    r.building_id === eBId && 
+    r.floor_number === 1
+  );
 
-  const connectorsStart = allRooms.filter(r => connectorsFilter(r));
-  if (connectorsStart.length === 0) {
-    console.warn('当前楼层无可用的跨层通道');
-    return [];
-  }
+  // 没有楼梯则放弃
+  if (sConnectors.length === 0 || eConnectors.length === 0) return [];
 
   let bestPath = null;
   let bestCost = Infinity;
 
-  for (const connStart of connectorsStart) {
-    // 在同楼栋的终点楼层找到对应的通道（room_id 前缀相同）
-    const buildingPrefix = connStart.room_id.split('-')[0]; // 例 "1"
-    const connEndCandidates = allRooms.filter(r =>
-      r.type === connStart.type &&          // 同类型（电梯/楼梯）
-      r.floor_number === ef &&              // 目标楼层
-      r.room_id.startsWith(buildingPrefix + '-') // 同栋楼
-    );
+  for (const sc of sConnectors) {
+    for (const ec of eConnectors) {
+      // 段1: 起点 -> 本楼本层楼梯
+      const nodes1 = buildGraphFromCorridors(sf, sBId, preference);
+      const p1 = dijkstra(nodes1, startRoomId, sc.room_id, preference);
+      if (p1.length < 2) continue;
 
-    for (const connEnd of connEndCandidates) {
-      // 第一段：起点 -> 通道入口（起始楼层）
-      const nodes1 = buildGraphFromCorridors(sf, preference);
-      const part1 = dijkstra(nodes1, startRoomId, connStart.room_id, preference);
-      if (part1.length < 2) continue;  // 不可达该通道入口
+      // 段2: 楼梯本楼层节点 -> 目标楼栋的1层节点 (通过物理空间的1楼连接)
+      // 这里的关键是1楼的走廊必须连接 startBuilding 和 endBuilding
+      // 构建1楼图（不加 building_id 过滤，假设1楼是连通的）
+      const nodes2 = buildGraphFromCorridors(1, null, preference);
+      const p2 = dijkstra(nodes2, sc.room_id, ec.room_id, preference);
+      if (p2.length < 2) continue;
 
-      // 第二段：通道出口（目标楼层）-> 终点
-      const nodes2 = buildGraphFromCorridors(ef, preference);
-      const part2 = dijkstra(nodes2, connEnd.room_id, endRoomId, preference);
-      if (part2.length < 2) continue;  // 从该通道出口不可达终点
+      // 段3: 目标楼1层楼梯 -> 终点（目标楼层）
+      const nodes3 = buildGraphFromCorridors(ef, eBId, preference);
+      const p3 = dijkstra(nodes3, ec.room_id, endRoomId, preference);
+      if (p3.length < 2) continue;
 
-      // 简化代价：两段路径的 Manhattan 距离和（可替换为实际路径长度累加）
-      // 增加楼层变化惩罚，鼓励就近选择通道
-      const crossCost = (preference === 'accessible') ? 0 : 100; // 电梯无体力惩罚
-      const cost = calculatePathCost(part1) + calculatePathCost(part2) + crossCost;
-
+      // 合并路径 (去重连接点)
+      const fullPath = [...p1, ...p2.slice(1), ...p3.slice(1)];
+      const cost = calculatePathCost(p1) + calculatePathCost(p2) + calculatePathCost(p3);
+      
       if (cost < bestCost) {
         bestCost = cost;
-        bestPath = [...part1, ...part2]; // 直接拼接（注意交界点重复，dijkstra 中包含通道节点）
+        bestPath = fullPath;
       }
     }
   }
 
-  if (!bestPath) {
-    console.warn('未找到可行的跨层路径');
-    return [];
-  }
-
-  // 可进一步用 makeOrthogonal 优化路径形状
-  // return makeOrthogonal(bestPath);
-  return bestPath;
+  return bestPath || [];
 }
 function findPathCrossBuilding(startRoomId, endRoomId, preference = 'shortest') {
   const startRoom = allRooms.find(r => r.room_id === startRoomId);
