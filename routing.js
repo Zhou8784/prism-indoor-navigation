@@ -115,6 +115,29 @@ function buildGraphFromCorridors(floor) {
   GRAPH_CACHE.set(floor, nodes);
   return nodes;
 }
+function findNearestNode(point, floor) {
+    const nodes = buildGraphFromCorridors(floor);
+    if (!nodes || nodes.length === 0) return null;
+
+    let minBoxDist = Infinity;
+    let nearestNode = null;
+
+    for (const node of nodes) {
+        // 计算欧几里得距离
+        const d = Math.sqrt(
+            Math.pow(point[0] - node.pos[0], 2) + 
+            Math.pow(point[1] - node.pos[1], 2)
+        );
+
+        if (d < minBoxDist) {
+            minBoxDist = d;
+            nearestNode = node;
+        }
+    }
+
+    // 设置一个合理的阈值（例如 50 单位距离），防止把天边外的点也强行关联
+    return minBoxDist < 50 ? nearestNode : null;
+}
 
 // Dijkstra（稳定版）
 function dijkstra(nodes, startId, endId) {
@@ -184,15 +207,20 @@ function matchStairs(startFloor, endFloor) {
 
 // 【优化版】主路径查找入口
 function findPath(startRoomId, endRoomId) {
-  if (!window.allRooms || window.allRooms.length === 0) {
-    console.error('房间数据未加载');
-    return [];
-  }
-
+  
   const startRoom = window.allRooms.find(r => r.room_id === startRoomId);
   const endRoom = window.allRooms.find(r => r.room_id === endRoomId);
 
   if (!startRoom || !endRoom) return [];
+  if (startRoom.floor_number === endRoom.floor_number) {
+        const floorNodes = buildGraphFromCorridors(startRoom.floor_number);
+        const startNode = findNearestNode(startRoom.center, startRoom.floor_number);
+        const endNode = findNearestNode(endRoom.center, endRoom.floor_number);
+        
+        if (startNode && endNode) {
+            return dijkstra(floorNodes, startNode.id, endNode.id);
+        }
+    }
 
   const sf = startRoom.floor_number;
   const ef = endRoom.floor_number;
