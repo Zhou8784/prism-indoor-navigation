@@ -146,8 +146,8 @@ function findNearestNode(point, floor) {
         }
     }
 
-    // 设置一个合理的阈值（例如 50 单位距离），防止把天边外的点也强行关联
-    return minBoxDist < 300 ? nearestNode : null;
+    
+    return minBoxDist < 1000 ? nearestNode : null;
 }
 
 // Dijkstra（稳定版）
