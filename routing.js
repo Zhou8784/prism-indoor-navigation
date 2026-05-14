@@ -1,5 +1,16 @@
 const GRAPH_CACHE = new Map(); // floor -> nodes
-
+function checkDataLoaded() {
+    return new Promise((resolve) => {
+        const check = () => {
+            if (window.MAP_DATA && window.allRooms && window.allRooms.length > 0) {
+                resolve(true);
+            } else {
+                setTimeout(check, 100); // 每100ms检查一次
+            }
+        };
+        check();
+    });
+}
 function getNodeId(p, floor) {
   return `${p[0].toFixed(2)}_${p[1].toFixed(2)}_${floor}`;
 }
@@ -77,7 +88,7 @@ function buildGraphFromCorridors(floor) {
     });
 
     if (!bestProj) return;
-    if (minDist > 200) return; // 连接距离限制
+    if (minDist > 800) return; // 连接距离限制
 
     // 【关键】直接调用精确的 isPointInCorridorPolygon
     const inCorridor = isPointInCorridorPolygon(bestProj, corridorData);
@@ -136,7 +147,7 @@ function findNearestNode(point, floor) {
     }
 
     // 设置一个合理的阈值（例如 50 单位距离），防止把天边外的点也强行关联
-    return minBoxDist < 50 ? nearestNode : null;
+    return minBoxDist < 300 ? nearestNode : null;
 }
 
 // Dijkstra（稳定版）
